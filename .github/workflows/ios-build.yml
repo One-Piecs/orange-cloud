@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       export_method:
-        description: 'Export method: ad-hoc | development | app-store-connect'
+        description: 'Export method: development (AltStore/sideload) | ad-hoc | app-store-connect'
         required: true
-        default: 'ad-hoc'
+        default: 'development'
         type: choice
         options:
-          - ad-hoc
           - development
+          - ad-hoc
           - app-store-connect
   push:
     branches: [main]
@@ -27,13 +27,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Signing is done via automatic signing + an App Store Connect API key,
-      # so no certificates or provisioning profiles need to live in the repo.
+      # AltStore sideloading: AltStore/AltServer re-signs the IPA with your personal
+      # Apple Development certificate at install time, so the CI produces a
+      # development-signed device IPA that AltServer can install on your iPhone.
+      #
+      # Signing is done via automatic signing + an App Store Connect API key, so no
+      # certificates or provisioning profiles need to live in the repo. This path
+      # requires a PAID Apple Developer Program account (free personal IDs cannot
+      # create App Store Connect API keys and are subject to a 3-app/App-ID limit).
+      #
       # Required secrets (repo > Settings > Secrets and variables > Actions):
       #   APP_STORE_CONNECT_API_KEY       base64 of the .p8 key, e.g. `base64 AuthKey_XXX.p8`
       #   APP_STORE_CONNECT_API_KEY_ID    10-char key id
       #   APP_STORE_CONNECT_ISSUER_ID     issuer id
       #   APPLE_TEAM_ID                   team id (project uses 6G78MMY657)
+      #
+      # To sideload on the target iPhone, that device UDID must be registered in the
+      # developer portal so the automatic development profile includes it.
       - name: Check signing secrets
         env:
           API_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
