@@ -64,11 +64,12 @@ jobs:
           # Drop any baked-in provisioning profile so SideStore signs with the free Apple ID
           rm -f "$APP/embedded.mobileprovision" "$APP/embedded.provisionprofile"
 
-          PAYLOAD="$RUNNER_TEMP/payload"
-          rm -rf "$PAYLOAD"
-          mkdir -p "$PAYLOAD"
-          cp -R "$APP" "$PAYLOAD/Orange Cloud.app"
-          (cd "$PAYLOAD" && zip -qr "$RUNNER_TEMP/OrangeCloud-SideStore-free.ipa" "Orange Cloud.app" -x '*.DS_Store')
+          PAYLOAD_ROOT="$RUNNER_TEMP/payload_root"
+          rm -rf "$PAYLOAD_ROOT"
+          mkdir -p "$PAYLOAD_ROOT/Payload"
+          cp -R "$APP" "$PAYLOAD_ROOT/Payload/Orange Cloud.app"
+          # A valid IPA is a zip that contains Payload/<App>.app
+          (cd "$PAYLOAD_ROOT" && zip -qr "$RUNNER_TEMP/OrangeCloud-SideStore-free.ipa" "Payload" -x '*.DS_Store')
 
           echo "IPA contents:"
           unzip -l "$RUNNER_TEMP/OrangeCloud-SideStore-free.ipa" | head -40
