@@ -1,0 +1,81 @@
+name: Build iOS SideStore IPA (free, stripped)
+
+# Path 2 - free Apple ID + SideStore/AltStore sideload.
+#
+# Free-account re-signing breaks app-extension signatures and hits Apple's
+# free App ID limit, so this job produces an IPA with ONLY the main app:
+#   - no app extensions (widgets / file provider / notification)
+#   - no watch app / watch extension
+#   - unsigned on purpose: SideStore re-signs it with your free Apple ID at
+#     install time (push/APNs will NOT work on a free sideload).
+#
+# No signing secrets are required for this artifact. If you have a paid Apple
+# Developer account and want push + extensions, use ios-build.yml instead.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/ios/**'
+      - '.github/workflows/ios-sidestore-free.yml'
+
+concurrency:
+  group: build-ios-sidestore-free
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build stripped device IPA
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Build the device (iphoneos, arm64) app WITHOUT signing. Because signing is
+      # disabled, the extension/watch targets compile but are never signed, which
+      # lets us archive and then simply strip them before packaging.
+      - name: Build unsigned device app
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project "apps/ios/Orange Cloud/Orange Cloud.xcodeproj" \
+            -scheme "Orange Cloud" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -derivedDataPath "$RUNNER_TEMP/derived" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Strip extensions, watch, and package IPA
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/derived/Build/Products/Release-iphoneos/Orange Cloud.app"
+          if [ ! -d "$APP" ]; then
+            echo "::error::App bundle not found at $APP"
+            find "$RUNNER_TEMP/derived/Build/Products" -maxdepth 2 -name '*.app' 2>/dev/null || true
+            exit 1
+          fi
+
+          # Remove all app extensions (file provider, widgets, notification)
+          rm -rf "$APP/PlugIns"
+          # Remove embedded watch content (watch app + extension)
+          rm -rf "$APP/Watch"
+          # Drop any baked-in provisioning profile so SideStore signs with the free Apple ID
+          rm -f "$APP/embedded.mobileprovision" "$APP/embedded.provisionprofile"
+
+          PAYLOAD="$RUNNER_TEMP/payload"
+          rm -rf "$PAYLOAD"
+          mkdir -p "$PAYLOAD"
+          cp -R "$APP" "$PAYLOAD/Orange Cloud.app"
+          (cd "$PAYLOAD" && zip -qr "$RUNNER_TEMP/OrangeCloud-SideStore-free.ipa" "Orange Cloud.app" -x '*.DS_Store')
+
+          echo "IPA contents:"
+          unzip -l "$RUNNER_TEMP/OrangeCloud-SideStore-free.ipa" | head -40
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: OrangeCloud-SideStore-free
+          path: ${{ runner.temp }}/OrangeCloud-SideStore-free.ipa
+          if-no-files-found: error
